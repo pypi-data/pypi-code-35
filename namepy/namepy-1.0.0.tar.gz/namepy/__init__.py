@@ -1,0 +1,1 @@
+from namepy import name
