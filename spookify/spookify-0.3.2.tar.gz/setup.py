@@ -1,0 +1,31 @@
+import setuptools
+
+with open("README.md", 'r') as fh:
+    long_description = fh.read()
+
+setuptools.setup(
+    name='spookify',
+    version='0.3.2',
+    author='George Watson',
+    author_email='george@georgewatson.me',
+    description='Pun generator',
+    long_description=long_description,
+    long_description_content_type='text/markdown',
+    url='https://github.com/georgewatson/spookify',
+    license='MIT',
+    packages=setuptools.find_packages(),
+    entry_points={
+        "console_scripts": [
+            "spookify = spookify.__main__:main"]
+        },
+    classifiers=[
+        'License :: OSI Approved :: MIT License',
+        'Programming Language :: Python :: 3.5',
+        'Topic :: Text Processing :: Linguistic',
+    ],
+    install_requires=[
+        'jellyfish',
+        'regex',
+    ],
+    include_package_data=True,
+    zip_safe=False)
