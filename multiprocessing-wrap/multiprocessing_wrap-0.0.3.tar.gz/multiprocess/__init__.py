@@ -1,0 +1,2 @@
+from multiprocess.multiprocessClass import Multiprocess, Queue, MultiprocessProcessException, MultiprocessClosed
+from multiprocess.multiprocessFunc import multiprocess
