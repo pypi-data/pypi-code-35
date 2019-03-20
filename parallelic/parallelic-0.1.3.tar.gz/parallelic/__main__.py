@@ -1,0 +1,3 @@
+import parallelic
+
+parallelic.main()
