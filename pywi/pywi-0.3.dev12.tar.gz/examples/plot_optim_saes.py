@@ -1,0 +1,372 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# Copyright (c) 2016 Jérémie DECOCK (http://www.jdhp.org)
+
+# This script is provided under the terms and conditions of the MIT license:
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+
+__all__ = ['SAES']
+
+import copy
+import math
+import numpy as np
+import pandas as pd
+import warnings
+
+class Optimizer:
+    """
+    Optimizer class.
+    By default, all optimizers works in minimization.
+    """
+
+    optimizer_name = "unknown"
+
+    def __init__(self):
+        self.log = Log()
+
+    def plotSamples(self, x_hist_array, y_hist_array, nabla_hist_array=None, objective_function=None, save_filename=None):
+        """
+        Plot the objective function for x_hist_array and the evaluated points.
+        This only works for 1D and 2D functions.
+        """
+        import matplotlib.pyplot as plt
+
+        assert x_hist_array.ndim == 2, x_hist_array.ndim
+        assert y_hist_array.ndim == 1, y_hist_array.ndim
+        assert y_hist_array.shape[0] == x_hist_array.shape[0], y_hist_array.shape
+
+        if x_hist_array.shape[1]==1:
+            # 1D case
+
+            fig = plt.figure(figsize=(16.0, 10.0))
+            ax = fig.add_subplot(111)
+
+            # PLOT THE OBJECTIVE FUNCTION 
+
+            if objective_function is not None:
+                # BUILD DATA
+
+                assert objective_function.domain_min.ndim == 1
+                assert objective_function.domain_max.ndim == 1
+                assert objective_function.domain_min.shape[0] == 1
+                assert objective_function.domain_max.shape[0] == 1
+
+                xmin = objective_function.domain_min[0]
+                xmax = objective_function.domain_max[0]
+                assert xmin < xmax
+
+                xstep = (xmax - xmin) / 1000.
+
+                x_vec = np.arange(xmin, xmax, xstep)
+                y_vec = objective_function(x_vec.reshape([-1, 1]))
+                ax.plot(x_vec, y_vec, "-", label="objective function")
+
+            # PLOT VISITED POINTS
+            ax.plot(x_hist_array[:,0], y_hist_array, ".", label="visited points")
+            
+            # PLOT THE BEST VISITED POINTS
+            x_min = x_hist_array[y_hist_array.argmin(), :]
+            y_min = y_hist_array.min()
+            ax.plot(x_min, y_min, "xr")
+
+            # PLOT GRADIENT OF VISITED POINTS
+            if nabla_hist_array is not None:
+                pass
+
+            # TITLE AND LABELS
+            ax.set_title('Visited points', fontsize=20)
+            ax.set_xlabel(r"$x$", fontsize=32)
+            ax.set_ylabel(r"$f(x)$", fontsize=32)
+
+            # LEGEND
+            ax.legend(loc='lower right', fontsize=20)
+
+            # SAVE FILES ######################
+            if save_filename is not None:
+                filename = save_filename + ".pdf"
+                plt.savefig(filename)
+
+            # PLOT
+            plt.show()
+
+        elif x_hist_array.shape[1]==2:
+            # 2D case
+
+            from mpl_toolkits.mplot3d import axes3d
+            if objective_function is not None:
+                from mpl_toolkits.mplot3d import axes3d
+                from matplotlib import cm
+
+            fig = plt.figure()
+
+            if objective_function is not None:
+                ax = fig.gca(projection='3d')
+            else:
+                ax = axes3d.Axes3D(fig)
+
+            # PLOT THE OBJECTIVE FUNCTION 
+
+            if objective_function is not None:
+                # BUILD DATA
+
+                assert objective_function.domain_min.ndim == 1
+                assert objective_function.domain_max.ndim == 1
+                assert objective_function.domain_min.shape[0] == 2
+                assert objective_function.domain_max.shape[0] == 2
+
+                x1min = objective_function.domain_min[0]
+                x1max = objective_function.domain_max[0]
+                assert x1min < x1max
+
+                x2min = objective_function.domain_min[1]
+                x2max = objective_function.domain_max[1]
+                assert x2min < x2max
+
+                x1step = (x1max - x1min) / 200.
+                x2step = (x2max - x2min) / 200.
+
+                range_x1 = np.arange(x1min, x1max, x1step)
+                range_x2 = np.arange(x2min, x2max, x2step)
+
+                mesh_x1,mesh_x2 = np.meshgrid(range_x1, range_x2)
+
+                # TODO: take advantage of meshgrid, for now, it's not optimized at
+                #       all and not very well written
+                z = np.zeros(mesh_x1.shape)         
+                for x1i in range(z.shape[0]):
+                    for x2i in range(z.shape[1]):
+                        point = np.array([mesh_x1[x1i, x2i], mesh_x2[x1i, x2i]])
+                        z[x1i, x2i] = objective_function(point)
+
+                # PLOT
+                ax.plot_surface(mesh_x1, mesh_x2, z, rstride=5, cstride=5, alpha=0.3)
+                cset = ax.contourf(mesh_x1, mesh_x2, z, zdir='z', offset=0, cmap=cm.coolwarm)
+
+            # PLOT VISITED POINTS
+            ax.scatter(x_hist_array[:,0], x_hist_array[:,1], y_hist_array, color='b')
+            
+            # PLOT THE BEST VISITED POINT
+            x_min = x_hist_array[y_hist_array.argmin(), :]
+            y_min = y_hist_array.min()
+            ax.scatter(x_min[0], x_min[1],  y_min, color='r')
+
+            # PLOT GRADIENT OF VISITED POINTS
+            if nabla_hist_array is not None:
+                pass
+
+            # TITLE AND LABELS
+            ax.set_title('Visited points', fontsize=20)
+            ax.set_xlabel(r'$x_1$', fontsize=32)
+            ax.set_ylabel(r'$x_2$', fontsize=32)
+            ax.set_zlabel(r'$f(x)$', fontsize=32)
+
+            # SAVE FILES ######################
+            if save_filename is not None:
+                filename = save_filename + ".pdf"
+                plt.savefig(filename)
+
+            plt.show()
+
+        else:
+            warnings.warn("Cannot plot samples: too many dimensions.")
+
+
+    def plotCosts(self, y_array):
+        """
+        Plot the evolution of point's cost evaluated during iterations.
+        y_array[i] is the cost at the ith iteration.
+        y_array must be a numpy array of dimension 1.
+        """
+        import matplotlib.pyplot as plt
+
+        # y_array must be a numpy array of dimension 1
+        assert y_array.ndim == 1, "y_array.ndim = " + str(y_array.ndim)
+
+        fig = plt.figure(figsize=(16.0, 10.0))
+        ax = fig.add_subplot(111)
+        ax.plot(y_array, "-", label="value")
+
+        # TITLE AND LABELS
+        ax.set_title("Value over iterations", fontsize=20)
+        ax.set_xlabel(r"iteration $i$", fontsize=32)
+        ax.set_ylabel(r"$f(x)$", fontsize=32)
+
+        # LEGEND
+        ax.legend(loc='lower right', fontsize=20)
+
+        # PLOT
+        plt.show()
+
+
+class Log:
+    # TODO: this class is not used yet ?
+    def __init__(self):
+        self.data = {}
+
+class SAES(Optimizer):
+    """SAES optimizer.
+
+    ($\mu$/1+$\lambda$)-$\sigma$-Self-Adaptation-ES
+
+
+    Init pop
+
+    $\forall$ gen
+
+    $\quad$ $\forall$ child
+
+    $\quad\quad$ 1. select $\rho$ parents
+
+    $\quad\quad$ 2. recombination of selected parents (if $\rho > 1$)
+
+    $\quad\quad$ 3. mutation of $\sigma$ (individual strategy) : $\sigma \leftarrow \sigma ~ e^{\tau \mathcal{N}(0,1)}$
+
+    $\quad\quad$ 4. mutation of $\boldsymbol{x}$ (objective param) : $\boldsymbol{x} \leftarrow \boldsymbol{x} + \sigma ~ \mathcal{N}(0,1)$
+
+    $\quad\quad$ 5. eval $f(\boldsymbol{x})$
+    
+    $\quad$ Select next gen individuals
+
+
+    See:
+    * http://www.scholarpedia.org/article/Evolution_strategies
+    * Notebook "ai_optimization_saes_en.ipynb" on jdhp.org
+
+    Parameters
+    ----------
+    mu : int
+        The number of parents.
+    lambda_ : int
+        The number of offspring.
+    sigma_init : float
+        The initial global mutation strength sigma. 
+    sigma_min : float
+        The stop criterion: the optimization is stopped when `sigma` is smaller
+        than `sigma_min`.
+    sigma_init : int
+        The number of times the (noisy) objective functions should be called
+        at each evaluation (taking the average value of these calls).
+    """
+
+    def minimize(self,
+                 objective_function,
+                 init_pop_mean,
+                 init_pop_std,
+                 num_gen=50,
+                 mu=3,
+                 lmb=6,
+                 tau=None,
+                 selection_operator='+',
+                 isotropic_mutation=True,
+                 pop_hist=None,
+                 plot=False):
+        """TODO
+
+        Parameters
+        ----------
+        x_init : ndarray
+            The initial parent vector (a 1D numpy array).
+
+        Returns
+        -------
+        ndarray
+            The optimal point found (a 1D numpy array).
+        """
+
+        assert selection_operator in (',', '+')
+
+        # Number of dimension of the solution space
+        d = objective_function.ndim
+
+        # Self-adaptation learning rate
+        if tau is None:
+            tau = 1./math.sqrt(2.*d)
+
+        # Set indices alias ############################
+
+        all_indices = slice(None, None)
+        parent_indices = slice(0, mu)
+        children_indices = slice(mu, None)
+
+        sigma_col = 0
+        x_cols = slice(1, -2)
+        y_col = -2
+        gen_col = -1
+
+        sigma_col_label = "sigma"
+        x_col_label_prefix = "x"
+        y_col_label = "y"
+        gen_col_label = "gen"
+
+        # Init the population ##########################
+
+        # "pop" array layout:
+        # - the first mu lines contain parents
+        # - the next lambda lines contain children
+        # - the first column contains the individual's strategy (sigma)
+        # - the last column contains the individual's assess (f(x))
+        # - the other columns contain the individual value (x)
+
+        columns_label = [sigma_col_label] + [x_col_label_prefix + str(d) for d in range(d)] + [y_col_label, gen_col_label]  # TODO: ajouter colonnes "set" ou "is_parent", "parents" (?) et "gen"
+
+        pop = pd.DataFrame(np.full([mu+lmb, len(columns_label)], np.nan),
+                           columns=columns_label)
+
+        pop.iloc[parent_indices, sigma_col] = 1.                                    # init the parents strategy to 1.0
+        pop.iloc[parent_indices, x_cols] = np.random.uniform(low=-10., high=10., size=[mu, d])    # init the parents value
+        pop.iloc[parent_indices, y_col] = objective_function(pop.iloc[parent_indices, x_cols].values.T)  # evaluate parents
+
+        # Plot #############################################
+
+        for gen in range(num_gen):
+
+            # Parent selection #############################
+                
+            # Each child is made from one randomly selected parent
+            selected_parent_indices = np.random.randint(mu, size=lmb)
+            pop.iloc[children_indices] = pop.iloc[selected_parent_indices].values
+            pop.iloc[children_indices, y_col] = np.nan
+
+            # Mutate children's sigma ######################
+    
+            pop.iloc[children_indices, sigma_col] *= np.exp(tau * np.random.normal(size=lmb))
+
+            # Mutate children's value ######################
+    
+            sigma_array = np.tile(pop.iloc[children_indices, sigma_col], [d,1]).T    # TODO: <- CHECK THIS !!!
+            random_array = np.random.normal(size=[lmb,d])
+            pop.iloc[children_indices, x_cols] += sigma_array * random_array
+
+            # Evaluate children ############################
+
+            pop.iloc[children_indices, y_col] = objective_function(pop.iloc[children_indices, x_cols].values.T)
+
+            pop[gen_col_label] = gen
+            if pop_hist is not None:
+                pop_hist.append(copy.deepcopy(pop))
+
+            # Select the best individuals ##################
+
+            if selection_operator == ',':
+                pop.iloc[parent_indices] = np.nan
+            
+            pop = pop.sort_values(by=[y_col_label], na_position='last').reset_index(drop=True)
+            
+            pop.iloc[children_indices] = np.nan
+
+        return pop.iloc[0, x_cols].values
