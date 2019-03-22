@@ -1,0 +1,28 @@
+
+def describe_value(x, clip=80):
+    """ Describes an object, for use in the error messages.
+        Short description, no multiline.
+    """
+    if hasattr(x, 'shape') and hasattr(x, 'dtype'):
+        shape_desc = 'x'.join(str(i) for i in x.shape)
+        desc = 'array[%r](%s) ' % (shape_desc, x.dtype)
+        final = desc + clipped_repr(x, clip - len(desc))
+        return remove_newlines(final)
+    else:
+        from .zc_describe_type import  describe_type
+        class_name = describe_type(x)
+        desc = 'Instance of %s: ' % class_name
+        final = desc + clipped_repr(x, clip - len(desc))
+        return remove_newlines(final)
+
+def clipped_repr(x, clip):
+    s = "{0!r}".format(x)
+    if len(s) > clip:
+        clip_tag = '... [clip]'
+        cut = clip - len(clip_tag)
+        s = "%s%s" % (s[:cut], clip_tag)
+    return s
+
+def remove_newlines(s):
+    return s.replace('\n', ' ')
+
