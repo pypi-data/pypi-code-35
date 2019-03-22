@@ -1,0 +1,110 @@
+'''
+Testing of the BSE Curation CLI interface
+'''
+
+import os
+import subprocess
+import pytest
+import shutil
+
+from basis_set_exchange import fileio, curate
+from .common_testvars import fake_data_dir, data_dir, test_data_dir, auth_data_dir
+
+def _test_curatecli_cmd(cmd):
+    return subprocess.check_output(cmd, shell=True, cwd='/tmp', universal_newlines=True, stderr=subprocess.STDOUT)
+
+test_files1 = [ '6-31G.0.table.json', 'ahlrichs/def2-ECP.1.element.json', 'dunning/cc-pV5+dZ-add.1.json']
+test_files1 = [os.path.join(data_dir, x) for x in test_files1]
+
+test_files2 = [ 'dunning/cc-pV5+dZ-add.1.json', 'dunning/cc-pVDZ.1.json' ]
+test_files2 = [os.path.join(data_dir, x) for x in test_files2]
+
+
+bsecurate_cmds = [
+    '-V', '-h', '--help',
+    'elements-in-files ' + ' '.join(test_files1),
+    'component-file-refs ' + ' '.join(test_files2),
+    'get-reader-formats'
+]
+
+fakebsecurate_cmds = []
+
+@pytest.mark.parametrize('bsecurate_cmd', bsecurate_cmds)
+def test_curatecli(bsecurate_cmd):
+    _test_curatecli_cmd('bsecurate ' + bsecurate_cmd)
+
+@pytest.mark.parametrize('bsecurate_cmd', fakebsecurate_cmds)
+def test_curatecli_datadir(bsecurate_cmd):
+    output = _test_curatecli_cmd('bsecurate -d ' + fake_data_dir + ' ' + bsecurate_cmd)
+    assert 'bppfake' in output
+
+
+def test_curatecli_makediff(tmp_path):
+    tmp_path = str(tmp_path)  # Needed for python 3.5
+
+    filename1 = '6-31G**-full.json.bz2' 
+    filename2 = '6-31G-full.json.bz2' 
+
+    file1 = os.path.join(test_data_dir, filename1)
+    file2 = os.path.join(test_data_dir, filename2)
+
+    tmpfile1 = os.path.join(tmp_path, filename1)
+    tmpfile2 = os.path.join(tmp_path, filename2)
+
+    shutil.copyfile(file1, tmpfile1)
+    shutil.copyfile(file2, tmpfile2)
+
+    _test_curatecli_cmd('bsecurate make-diff -l {} -r {}'.format(tmpfile1, tmpfile2))
+    _test_curatecli_cmd('bsecurate make-diff -l {} -r {}'.format(tmpfile2, tmpfile1))
+
+    diff1 = fileio.read_json_basis(tmpfile1 + '.diff')
+    diff2 = fileio.read_json_basis(tmpfile2 + '.diff')
+
+    assert len(diff1['elements']) == 36
+    assert len(diff2['elements']) == 0
+
+    reffilename = '6-31G**-polarization.json.bz2' 
+    reffile = os.path.join(test_data_dir, reffilename)
+    refdata = fileio.read_json_basis(reffile)
+
+    assert curate.compare_basis(diff1, refdata, rel_tol=0.0)
+
+
+def test_curatecli_compare_1():
+    output = _test_curatecli_cmd('bsecurate compare-basis-sets 6-31g 6-31g --version1 0 --version2 0')
+    assert "No difference found" in output
+
+    output = _test_curatecli_cmd('bsecurate compare-basis-sets 6-31g 6-31g --version1 0 --version2 0 --uncontract-general')
+    assert "No difference found" in output
+
+    output = _test_curatecli_cmd('bsecurate compare-basis-sets 6-31g 6-31g --version1 0 --version2 1')
+    assert "DIFFERENCES FOUND" in output
+
+
+# yapf: disable
+@pytest.mark.parametrize('filename1,filename2,expected', 
+                           [('6-31g-bse.gbs.bz2', '6-31g-bse.gbs.bz2', True),
+                            ('6-31g-bse.gbs.bz2', '6-31g-bse.nw.bz2', True),
+                            ('6-31g-bse.nw.bz2', '6-31g-bse-BAD1.gbs.bz2', False),
+                            ('6-31g-bse.nw.bz2', '6-31g-bse-BAD2.gbs.bz2', False),
+                            ('6-31g-bse.nw.bz2', '6-31g-bse-BAD3.gbs.bz2', False),
+                            ('6-31g-bse.nw.bz2', '6-31g-bse-BAD4.gbs.bz2', False),
+                            ('6-31g-bse.nw.bz2', '6-31g-bse-BAD5.gbs.bz2', False),
+                            ('def2-ecp.gbs.bz2', 'def2-ecp.gbs.bz2', True),
+                            ('def2-ecp.gbs.bz2', 'def2-ecp.nw.bz2', True),
+                            ('def2-ecp.gbs.bz2', 'def2-ecp-BAD1.nw.bz2', False),
+                            ('def2-ecp.gbs.bz2', 'def2-ecp-BAD2.nw.bz2', False),
+                            ('def2-ecp.gbs.bz2', 'def2-ecp-BAD3.nw.bz2', False),
+                            ('def2-ecp.gbs.bz2', 'def2-ecp-BAD4.nw.bz2', False),
+                            ('def2-ecp.gbs.bz2', 'def2-ecp-BAD5.nw.bz2', False),
+                            ('def2-ecp.gbs.bz2', 'def2-ecp-BAD6.gbs.bz2', False)])
+# yapf: enable
+def test_curatecli_compare_files(filename1, filename2, expected):
+    file1 = os.path.join(test_data_dir, filename1)
+    file2 = os.path.join(test_data_dir, filename2)
+
+    output = _test_curatecli_cmd('bsecurate compare-basis-files {} {} --uncontract-general'.format(file1, file2))
+    if expected:
+        assert "No difference found" in output
+    else:
+        assert "DIFFERENCES FOUND" in output
