@@ -1,0 +1,146 @@
+# -*- coding: utf-8 -*-
+
+# Form implementation generated from reading ui file '/home/travis/build/randovania/randovania/randovania/gui/mainwindow.ui',
+# licensing of '/home/travis/build/randovania/randovania/randovania/gui/mainwindow.ui' applies.
+#
+# Created: Sun Mar 24 02:06:07 2019
+#      by: pyside2-uic  running on PySide2 5.12.0
+#
+# WARNING! All changes made in this file will be lost!
+
+from PySide2 import QtCore, QtGui, QtWidgets
+
+class Ui_MainWindow(object):
+    def setupUi(self, MainWindow):
+        MainWindow.setObjectName("MainWindow")
+        MainWindow.resize(587, 520)
+        MainWindow.setMaximumSize(QtCore.QSize(16777215, 16777215))
+        self.centralWidget = QtWidgets.QWidget(MainWindow)
+        self.centralWidget.setMaximumSize(QtCore.QSize(16777215, 16777215))
+        self.centralWidget.setObjectName("centralWidget")
+        self.verticalLayout = QtWidgets.QVBoxLayout(self.centralWidget)
+        self.verticalLayout.setObjectName("verticalLayout")
+        self.tabWidget = QtWidgets.QTabWidget(self.centralWidget)
+        self.tabWidget.setObjectName("tabWidget")
+        self.tab = QtWidgets.QWidget()
+        self.tab.setObjectName("tab")
+        self.gridLayout_2 = QtWidgets.QGridLayout(self.tab)
+        self.gridLayout_2.setObjectName("gridLayout_2")
+        self.label = QtWidgets.QLabel(self.tab)
+        self.label.setAlignment(QtCore.Qt.AlignLeading|QtCore.Qt.AlignLeft|QtCore.Qt.AlignTop)
+        self.label.setWordWrap(True)
+        self.label.setOpenExternalLinks(True)
+        self.label.setObjectName("label")
+        self.gridLayout_2.addWidget(self.label, 0, 0, 1, 1)
+        self.tabWidget.addTab(self.tab, "")
+        self.verticalLayout.addWidget(self.tabWidget)
+        self.progress_box = QtWidgets.QGroupBox(self.centralWidget)
+        self.progress_box.setObjectName("progress_box")
+        self.gridLayout_3 = QtWidgets.QGridLayout(self.progress_box)
+        self.gridLayout_3.setObjectName("gridLayout_3")
+        self.stop_background_process_button = QtWidgets.QPushButton(self.progress_box)
+        self.stop_background_process_button.setEnabled(False)
+        self.stop_background_process_button.setMinimumSize(QtCore.QSize(100, 0))
+        self.stop_background_process_button.setMaximumSize(QtCore.QSize(100, 16777215))
+        self.stop_background_process_button.setCheckable(False)
+        self.stop_background_process_button.setFlat(False)
+        self.stop_background_process_button.setObjectName("stop_background_process_button")
+        self.gridLayout_3.addWidget(self.stop_background_process_button, 0, 3, 1, 1)
+        self.progress_label = QtWidgets.QLabel(self.progress_box)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.progress_label.sizePolicy().hasHeightForWidth())
+        self.progress_label.setSizePolicy(sizePolicy)
+        self.progress_label.setText("")
+        self.progress_label.setAlignment(QtCore.Qt.AlignLeading|QtCore.Qt.AlignLeft|QtCore.Qt.AlignVCenter)
+        self.progress_label.setWordWrap(True)
+        self.progress_label.setObjectName("progress_label")
+        self.gridLayout_3.addWidget(self.progress_label, 0, 2, 1, 1)
+        self.progress_bar = QtWidgets.QProgressBar(self.progress_box)
+        self.progress_bar.setMinimumSize(QtCore.QSize(200, 0))
+        self.progress_bar.setMaximumSize(QtCore.QSize(250, 16777215))
+        self.progress_bar.setProperty("value", 0)
+        self.progress_bar.setInvertedAppearance(False)
+        self.progress_bar.setObjectName("progress_bar")
+        self.gridLayout_3.addWidget(self.progress_bar, 0, 0, 1, 2)
+        self.verticalLayout.addWidget(self.progress_box)
+        MainWindow.setCentralWidget(self.centralWidget)
+        self.menu_bar = QtWidgets.QMenuBar(MainWindow)
+        self.menu_bar.setGeometry(QtCore.QRect(0, 0, 587, 21))
+        self.menu_bar.setObjectName("menu_bar")
+        self.menu_open = QtWidgets.QMenu(self.menu_bar)
+        self.menu_open.setObjectName("menu_open")
+        self.menu_edit = QtWidgets.QMenu(self.menu_bar)
+        self.menu_edit.setObjectName("menu_edit")
+        self.menu_database = QtWidgets.QMenu(self.menu_edit)
+        self.menu_database.setObjectName("menu_database")
+        self.menu_advanced = QtWidgets.QMenu(self.menu_bar)
+        self.menu_advanced.setObjectName("menu_advanced")
+        MainWindow.setMenuBar(self.menu_bar)
+        self.menu_action_data_visualizer = QtWidgets.QAction(MainWindow)
+        self.menu_action_data_visualizer.setObjectName("menu_action_data_visualizer")
+        self.menu_action_existing_seed_details = QtWidgets.QAction(MainWindow)
+        self.menu_action_existing_seed_details.setObjectName("menu_action_existing_seed_details")
+        self.menu_action_tracker = QtWidgets.QAction(MainWindow)
+        self.menu_action_tracker.setObjectName("menu_action_tracker")
+        self.menu_action_edit_new_database = QtWidgets.QAction(MainWindow)
+        self.menu_action_edit_new_database.setObjectName("menu_action_edit_new_database")
+        self.menu_action_edit_existing_database = QtWidgets.QAction(MainWindow)
+        self.menu_action_edit_existing_database.setObjectName("menu_action_edit_existing_database")
+        self.menu_action_export_iso = QtWidgets.QAction(MainWindow)
+        self.menu_action_export_iso.setObjectName("menu_action_export_iso")
+        self.menu_action_validate_seed_after = QtWidgets.QAction(MainWindow)
+        self.menu_action_validate_seed_after.setCheckable(True)
+        self.menu_action_validate_seed_after.setChecked(True)
+        self.menu_action_validate_seed_after.setObjectName("menu_action_validate_seed_after")
+        self.menu_action_timeout_generation_after_a_time_limit = QtWidgets.QAction(MainWindow)
+        self.menu_action_timeout_generation_after_a_time_limit.setCheckable(True)
+        self.menu_action_timeout_generation_after_a_time_limit.setChecked(True)
+        self.menu_action_timeout_generation_after_a_time_limit.setObjectName("menu_action_timeout_generation_after_a_time_limit")
+        self.menu_open.addAction(self.menu_action_data_visualizer)
+        self.menu_open.addAction(self.menu_action_existing_seed_details)
+        self.menu_open.addAction(self.menu_action_tracker)
+        self.menu_database.addAction(self.menu_action_edit_new_database)
+        self.menu_database.addAction(self.menu_action_edit_existing_database)
+        self.menu_edit.addAction(self.menu_database.menuAction())
+        self.menu_advanced.addAction(self.menu_action_export_iso)
+        self.menu_advanced.addAction(self.menu_action_validate_seed_after)
+        self.menu_advanced.addAction(self.menu_action_timeout_generation_after_a_time_limit)
+        self.menu_bar.addAction(self.menu_open.menuAction())
+        self.menu_bar.addAction(self.menu_edit.menuAction())
+        self.menu_bar.addAction(self.menu_advanced.menuAction())
+
+        self.retranslateUi(MainWindow)
+        self.tabWidget.setCurrentIndex(0)
+        QtCore.QMetaObject.connectSlotsByName(MainWindow)
+
+    def retranslateUi(self, MainWindow):
+        MainWindow.setWindowTitle(QtWidgets.QApplication.translate("MainWindow", "Randovania", None, -1))
+        self.label.setText(QtWidgets.QApplication.translate("MainWindow", "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
+"<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
+"p, li { white-space: pre-wrap; }\n"
+"</style></head><body style=\" font-family:\'MS Shell Dlg 2\'; font-size:8pt; font-weight:400; font-style:normal;\">\n"
+"<p style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:12pt;\">Randovania</span></p>\n"
+"<p style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><a href=\"https://github.com/henriquegemignani/randovania\"><span style=\" font-size:10pt; text-decoration: underline; color:#0000ff;\">https://github.com/randovania/randovania<br /></span></a><span style=\" font-size:10pt;\">This software is covered by the </span><a href=\"https://www.gnu.org/licenses/gpl-3.0.en.html\"><span style=\" font-size:10pt; text-decoration: underline; color:#0000ff;\">GNU General Public License v3 (GPL v3)</span></a><span style=\" font-size:10pt;\">.<br /></span></p>\n"
+"<p style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:12pt;\">Community</span></p>\n"
+"<p style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:10pt;\">Make sure to visit the Metroid Prime Randomizer Discord server!</span><br /><a href=\"https://discordapp.com/invite/gymstUz\"><span style=\" font-size:10pt; text-decoration: underline; color:#0000ff;\">https://discordapp.com/invite/gymstUz<br /></span></a></p>\n"
+"<p style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:12pt;\">Credits</span><br /><br /><span style=\" font-size:10pt;\">GUI and logic written by </span><a href=\"https://github.com/henriquegemignani/\"><span style=\" font-size:10pt; text-decoration: underline; color:#0000ff;\">Henrique Gemignani</span></a><span style=\" font-size:10pt;\">, while game patching was written by </span><a href=\"https://twitter.com/ClarisRobyn\"><span style=\" font-size:10pt; text-decoration: underline; color:#0000ff;\">Claris</span></a><span style=\" font-size:10pt;\">.</span></p>\n"
+"<p style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:10pt;\">Room data collected by Claris.</span></p>\n"
+"<p style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:10pt;\">BashPrime, Pwootage, and April Wade made </span><a href=\"https://randomizer.metroidprime.run/\"><span style=\" font-size:10pt; text-decoration: underline; color:#0000ff;\">https://randomizer.metroidprime.run/</span></a><span style=\" font-size:10pt;\">, from which the GUI was based.</span></p></body></html>", None, -1))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab), QtWidgets.QApplication.translate("MainWindow", "About", None, -1))
+        self.progress_box.setTitle(QtWidgets.QApplication.translate("MainWindow", "Progress", None, -1))
+        self.stop_background_process_button.setText(QtWidgets.QApplication.translate("MainWindow", "Stop", None, -1))
+        self.menu_open.setTitle(QtWidgets.QApplication.translate("MainWindow", "Open", None, -1))
+        self.menu_edit.setTitle(QtWidgets.QApplication.translate("MainWindow", "Edit", None, -1))
+        self.menu_database.setTitle(QtWidgets.QApplication.translate("MainWindow", "Database", None, -1))
+        self.menu_advanced.setTitle(QtWidgets.QApplication.translate("MainWindow", "Advanced", None, -1))
+        self.menu_action_data_visualizer.setText(QtWidgets.QApplication.translate("MainWindow", "Data Visualizer", None, -1))
+        self.menu_action_existing_seed_details.setText(QtWidgets.QApplication.translate("MainWindow", "Existing Seed Details", None, -1))
+        self.menu_action_tracker.setText(QtWidgets.QApplication.translate("MainWindow", "Tracker", None, -1))
+        self.menu_action_edit_new_database.setText(QtWidgets.QApplication.translate("MainWindow", "New Copy", None, -1))
+        self.menu_action_edit_existing_database.setText(QtWidgets.QApplication.translate("MainWindow", "Existing Copy", None, -1))
+        self.menu_action_export_iso.setText(QtWidgets.QApplication.translate("MainWindow", "Export ISO", None, -1))
+        self.menu_action_validate_seed_after.setText(QtWidgets.QApplication.translate("MainWindow", "Validate if seed is possible after generation", None, -1))
+        self.menu_action_timeout_generation_after_a_time_limit.setText(QtWidgets.QApplication.translate("MainWindow", "Timeout generation after a time limit", None, -1))
+
