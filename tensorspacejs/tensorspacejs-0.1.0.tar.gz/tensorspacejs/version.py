@@ -1,0 +1,9 @@
+# tensorspacejs version
+version = '0.1.0'
+# dependencies version
+python_version = '3.6'
+node_version = '11.3+'
+npm_version = '6.5+'
+tensorflow_version = '1.12.0'
+keras_version = '2.2.2'
+tensorflowjs_version = '0.8.0'
