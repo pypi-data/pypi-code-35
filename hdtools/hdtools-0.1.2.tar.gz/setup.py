@@ -1,0 +1,32 @@
+from distutils.core import setup
+
+setup(
+    name='hdtools',
+    version='0.1.2',
+    description='hd-tools for bitcoin and bitcoin-test',
+    author='Mahdi Fooladgar',
+    author_email='fooladgar@morvarid.io',
+    url='https://github.com/morvaridio/hdtools',
+    license='MIT',
+    packages=[
+        'hdtools',
+    ],
+    keywords=["bip32", 'hd-wallet', 'bitcoin', 'bip49', 'bip44'],
+    install_requires=[
+        'ecdsa',
+        'base58',
+        'mnemonic'
+    ],
+    classifiers=[
+        'Development Status :: 3 - Alpha',
+        'Intended Audience :: Developers',
+        'Topic :: Security :: Cryptography',
+        'License :: OSI Approved :: MIT License',
+
+        # Python versions
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.4',
+        'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
+    ],
+)
