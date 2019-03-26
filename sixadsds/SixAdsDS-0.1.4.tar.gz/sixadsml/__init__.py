@@ -1,0 +1,5 @@
+"""
+Initial file
+"""
+
+name = 'SixAdsML'
