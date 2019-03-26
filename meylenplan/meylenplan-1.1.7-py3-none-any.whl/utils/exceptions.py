@@ -1,0 +1,3 @@
+class InvalidDateException(Exception):
+    pass
+
