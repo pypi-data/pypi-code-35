@@ -1,0 +1,12 @@
+NUMBER_OF_ACCOUNTS = 2
+SKALE_AMOUNT = 100
+ETH_AMOUNT = 10
+
+FOLDER_NAME = 'creds'
+
+LONG_LINE = '='*100
+
+NUMBER_OF_PORTS = 3 # todo: tmp
+PORTS_PER_SCHAIN = 11 # todo: tmp
+
+WALLETS_FILE = 'wallets.json'
