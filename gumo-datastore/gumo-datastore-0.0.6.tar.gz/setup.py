@@ -1,0 +1,39 @@
+import setuptools
+
+
+name = 'gumo-datastore'
+version = '0.0.6'
+description = 'Gumo Datastore Library'
+dependencies = [
+    f'gumo-core >= {version}',
+    'google-cloud-datastore >= 1.7.1',
+]
+
+with open("README.md", "r") as fh:
+    long_description = fh.read()
+
+packages = [
+    package for package in setuptools.find_packages()
+    if package.startswith('gumo')
+]
+
+namespaces = ['gumo', 'gumo.datastore']
+
+setuptools.setup(
+    name=name,
+    version=version,
+    author="Gumo Project Team",
+    author_email="gumo-organizer@levii.co.jp",
+    description=description,
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    url="https://github.com/gumo-py/gumo",
+    packages=packages,
+    namespaces=namespaces,
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+    ],
+    install_requires=dependencies,
+)
