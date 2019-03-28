@@ -1,0 +1,2 @@
+from allelicimbalance.allelicimbalance import betabinom_test
+from allelicimbalance.allelicimbalance import log_posterior_allelic_fold_change
