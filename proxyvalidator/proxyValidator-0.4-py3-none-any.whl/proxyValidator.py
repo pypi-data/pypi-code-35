@@ -1,0 +1,27 @@
+from random import choice
+from requests import Session
+from threading import Thread
+
+class ProxyValidator:
+    def __init__(self):
+        self.validated_proxies = []
+
+    @staticmethod
+    def __run_function(function, function_argument):
+        job_thread = Thread(target=function, args=(function_argument,))
+        job_thread.start()
+    
+    def validate_proxies(self, proxies):
+        for proxy in proxies:
+            self.__run_function(self.__validate_proxy, proxy)
+    
+    def __validate_proxy(self, proxy):
+        session = Session()
+        session.proxies = {'https': f'https://{proxy}'}
+        try:
+            session.get('http://www.showmemyip.com/')
+            self.validated_proxies.append(proxy)
+            print(f'proxy: {proxy} validated')
+        except:
+            print(f'proxy: {proxy} unvalidated')
+            pass
