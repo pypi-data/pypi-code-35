@@ -1,0 +1,1 @@
+from .secretsmngr import SecretsManager
