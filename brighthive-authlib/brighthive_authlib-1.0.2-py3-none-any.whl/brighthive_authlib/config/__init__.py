@@ -1,0 +1,1 @@
+from brighthive_authlib.config.config import AuthLibConfiguration
