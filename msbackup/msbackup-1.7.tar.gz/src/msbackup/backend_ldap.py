@@ -1,0 +1,143 @@
+# -*- coding: utf-8 -*-
+"""Модуль архиватора базы данных OpenLDAP."""
+
+import os
+import subprocess
+import tempfile
+import shutil
+
+from msbackup.backend_base import Base as BaseBackend
+
+
+def get_backend_kwargs(params):
+    """Подготовка параметров для режима 'ldap'."""
+    kwargs = BaseBackend.get_common_backend_kwargs(params)
+    BaseBackend.get_param(params, kwargs, 'archive_name')
+    BaseBackend.get_param(params, kwargs, 'slapcat_cmd')
+    BaseBackend.get_param(params, kwargs, 'ldap_conf_dir')
+    return kwargs
+
+
+class Ldap(BaseBackend):
+    """Архиватор базы данных OpenLDAP."""
+
+    SECTION = 'Backend-LDAP'
+
+    @classmethod
+    def make_subparser(cls, subparsers):
+        """Добавление раздела параметров командной строки для архиватора."""
+        parser = subparsers.add_parser('ldap')
+        parser.set_defaults(get_backend_kwargs=get_backend_kwargs)
+        parser.add_argument(
+            '-n', '--name', dest='archive_name', metavar='NAME',
+            help='Name of archive file without extension.',
+        )
+        parser.add_argument(
+            '--slapcat-cmd',
+            help=('Command to run OpenLDAP command-line util '
+                  '(default: /usr/sbin/slapcat).'),
+        )
+        parser.add_argument(
+            '--ldap-conf-dir',
+            help=('Path to OpenLDAP config directory '
+                  '(default: /etc/ldap/slapd.d).'),
+        )
+        parser.add_argument(
+            'source', nargs='*', metavar='BASEDN',
+            help='Base DN for backup.',
+        )
+
+    def __init__(self, config, *args, **kwargs):
+        """Конструктор."""
+        super().__init__(config, *args, **kwargs)
+        a_name = kwargs.get('archive_name') or config.get(
+            section=self.SECTION,
+            option='ARCHIVE_NAME',
+            fallback=None,
+        )
+        self.archive_name = os.path.basename(a_name) if a_name else None
+        cmd = kwargs.get('slapcat_cmd') or config.get(
+            section=self.SECTION,
+            option='SLAPCAT_COMMAND',
+            fallback='/usr/sbin/slapcat',
+        )
+        ldap_conf_dir = kwargs.get('ldap_conf_dir') or config.get(
+            section=self.SECTION,
+            option='LDAP_CONF_DIR',
+            fallback='/etc/ldap/slapd.d',
+        )
+        self.slapcat_cmd = [cmd, '-F', ldap_conf_dir]
+
+    def _archive(self, source, output, **kwargs):
+        """
+        Упаковка списка источников в файл архива.
+
+        :param source: Список источников для архивации.
+        :type source: [str]
+        :param output: Путь к файлу с архивом.
+        :type output: str
+        """
+        tmpdir = tempfile.mkdtemp(dir=self.tmp_dir)
+        try:
+            conf_file = os.path.join(tmpdir, 'ldap.config.ldif')
+            params = self.slapcat_cmd.copy()
+            params.extend(['-b', 'cn=config', '-l', conf_file])
+            subprocess.check_call(
+                params,
+                stdout=self.stream_out,
+                stderr=self.stream_err,
+            )
+            pack_files = [os.path.basename(conf_file)]
+            for src in source:
+                name = '.'.join(
+                    item.replace('dc=', '') for item in src.split(','))
+                data_file = os.path.join(tmpdir, '{}.ldif'.format(name))
+                pack_files.append(os.path.basename(data_file))
+                params = self.slapcat_cmd.copy()
+                params.extend(['-b', src, '-l', data_file])
+                subprocess.check_call(
+                    params,
+                    stdout=self.stream_out,
+                    stderr=self.stream_err,
+                )
+            self.pack(
+                source=pack_files,
+                output=output,
+                base_dir=tmpdir,
+            )
+        except Exception:
+            raise
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def _backup(self, sources=None, verbose=False, **kwargs):
+        """
+        Архивация баз данных OpenLDAP.
+
+        :param source: Список источников для архивации.
+        :type source: [str]
+        :param verbose: Выводить информационные сообщения.
+        :type verbose: bool
+        :return: Количество ошибок.
+        :rtype: int
+        """
+        name = kwargs.get('archive_name', self.archive_name)
+        if name is None:
+            name = os.uname().nodename
+        output = self.outpath(name=name)
+        if verbose:
+            self.out('Backup sources: ', end='')
+            for src in sources[:-1]:
+                self.out(src, end=' ')
+            else:
+                self.out(sources[-1])
+        try:
+            self.archive(
+                source=sources,
+                output=output,
+            )
+        except subprocess.CalledProcessError as ex:
+            if ex.stderr is not None:  # pragma: no coverage
+                self.err(ex.stderr)
+            return 1
+        return 0
