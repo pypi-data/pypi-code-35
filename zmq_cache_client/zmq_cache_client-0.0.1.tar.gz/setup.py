@@ -1,0 +1,22 @@
+from setuptools import setup, find_packages
+
+with open("README.md", "r") as fh:
+    long_description = fh.read()
+
+setup(
+    name="zmq_cache_client",
+    version="0.0.1",
+    author="Yun Lu",
+    author_email="luyun198993@gmail.com",
+    description="ZeroMQ look aside cache Python client",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    url="https://github.com/yunluyl/zmq_cache_client_py",
+    install_requires=["pyzmq"],
+    packages=find_packages(),
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+    ]
+)
