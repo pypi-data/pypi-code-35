@@ -1,0 +1,5 @@
+MAJOR_VERSION = '0.9.8'
+VERSION = MAJOR_VERSION
+MINOR_REVISION = '0'
+BASEVERSION = VERSION 
+RELEASE_NAME = "Love is humanity's secret weapon."
