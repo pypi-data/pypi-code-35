@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+
+import sys
+import os.path
+import argparse
+import glob
+import shutil
+import folia.main as folia
+from foliatools import VERSION
+from foliatools.foliavalidator import validate
+
+def main():
+    parser = argparse.ArgumentParser(description="", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('-V', '--version',help="Output version information", action='store_true')
+    parser.add_argument('-n', '--dryrun',help="Dry run, do not write files", action='store_true', default=False)
+    parser.add_argument('-E','--extension', type=str,help="Extension", action='store',default="xml",required=False)
+    parser.add_argument('files', nargs='+', help='Input files')
+    args = parser.parse_args()
+
+    if args.version:
+        print("FoLiA " + folia.FOLIAVERSION + ", library version " + folia.LIBVERSION,file=sys.stderr)
+        sys.exit(0)
+
+    success = process(*args.files, **args.__dict__)
+    sys.exit(0 if success else 1)
+
+def convert_set(annotationtype, annotationset):
+    if annotationset == "undefined":
+        if annotationtype == folia.AnnotationType.TEXT:
+            return folia.DEFAULT_TEXT_SET
+        elif annotationtype == folia.AnnotationType.PHON:
+            return folia.DEFAULT_PHON_SET
+        else:
+            return None
+    else:
+        return annotationset
+
+def convert_undefined_sets(doc):
+    exempt = set()
+    for element in doc.items():
+        if isinstance(element, folia.AbstractElement):
+            if element.set == "undefined" and element.cls:
+                exempt.add(element.ANNOTATIONTYPE)
+    for element in doc.items():
+        if isinstance(element, folia.AbstractElement):
+            if element.set == "undefined" and element.ANNOTATIONTYPE not in exempt:
+                element.set = None
+    doc.annotations = [ (annotationtype, convert_set(annotationtype, annotationset) ) for annotationtype, annotationset in doc.annotations ]
+
+
+def annotators2processors(doc, mainprocessor):
+    """Convert FoLiA v1 style annotators to v2 style processors (limited)"""
+    for element in doc.items():
+        if isinstance(element, folia.AbstractElement):
+            if element.annotator:
+                if element.annotatortype == folia.ProcessorType.MANUAL:
+                    annotatortype = folia.ProcessorType.MANUAL
+                else:
+                    annotatortype = folia.ProcessorType.AUTO
+                foundprocessor = None
+                for processor in doc.getprocessors(element.ANNOTATIONTYPE, element.set):
+                    if element.annotator == processor.name and annotatortype == processor.type:
+                        foundprocessor = processor
+                if foundprocessor:
+                    element.processor = foundprocessor
+                else:
+                    #Create a new processor
+                    newprocessor = folia.Processor(element.annotator, type=annotatortype)
+                    try:
+                        newprocessor.begindatetime = doc.annotationdefaults[element.ANNOTATIONTYPE][element.set]['datetime']
+                    except: #May likely not exist, that's ok
+                        pass
+                    mainprocessor.append(newprocessor)
+                    element.setprocessor(newprocessor)
+                #delete the old style annotator
+                element.annotator = None
+                element.annotatortype = None
+    doc.annotationdefaults = {} #not needed anymore
+
+
+def process(*files, **kwargs):
+    success = False
+    for file in files:
+        if os.path.isdir(file):
+            r = process(list(glob.glob(os.path.join(file, "*." + kwargs['extension'] )) ), **kwargs)
+            if r != 0:
+                success = False
+        elif os.path.isfile(file):
+            mainprocessor = folia.Processor.create(name="foliaupgrade", version=VERSION)
+            doc = validate(file,schema=None, stricttextvalidation=True,autodeclare=True,output=False, warn=False,processor=mainprocessor,traceback=True,**kwargs)
+            if doc is not False:
+                print("Upgrading " + doc.filename,file=sys.stderr)
+                #bump the version number
+                doc.version = folia.FOLIAVERSION
+                #convert old style annotators to new style processors
+                annotators2processors(doc, mainprocessor)
+                #convert undefined sets
+                convert_undefined_sets(doc)
+                doc.save(doc.filename + ".upgraded")
+                if not validate(file + ".upgraded",schema=None,stricttextvalidation=True,autodeclare=False,traceback=True,**kwargs):
+                    print("Upgrade failed",file=sys.stderr)
+                    success = False
+                else:
+                    print("Upgrade OK",file=sys.stderr)
+                    if kwargs.get('dryrun'):
+                        os.unlink(doc.filename+".upgraded")
+                        print(doc.xmlstring())
+                    else:
+                        shutil.move(doc.filename + ".upgraded", file)
+            else:
+                success  = False
+    return success
+
+if __name__ == "__main__":
+    main()
