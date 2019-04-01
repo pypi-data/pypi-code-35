@@ -1,0 +1,1 @@
+from secondproject.polynom import solve_polynom
