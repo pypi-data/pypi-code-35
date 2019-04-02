@@ -1,0 +1,2 @@
+class MissingRequired(Exception):
+    pass
