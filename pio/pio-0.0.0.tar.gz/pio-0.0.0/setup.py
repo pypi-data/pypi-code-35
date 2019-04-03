@@ -1,0 +1,2 @@
+from setuptools import setup
+setup(name='pio',version='0.0.0',description='',long_description='',url='https://www.richie-bendall.ml',author='Richie Bendall',author_email='richiebendall@gmail.com',packages=[],classifiers=['Development Status :: 1 - Planning'],)
