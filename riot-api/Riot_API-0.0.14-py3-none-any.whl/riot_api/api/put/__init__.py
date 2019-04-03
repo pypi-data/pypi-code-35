@@ -1,0 +1,1 @@
+from . import tournaments_v4 as tournaments

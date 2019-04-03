@@ -1,0 +1,10 @@
+from . import champion_mastery_v4 as champion_mastery
+from . import champion_v3 as champion
+from . import league_v4 as league
+from . import lol_status_v3 as lol_status
+from . import match_v4 as match
+from . import spectator_v4 as spectator
+from . import summoner_v4 as summoner
+from . import third_party_code_v4 as third_party_code
+from . import tournament_stub_v4 as tournament_stub
+from . import tournament_v4 as tournament
