@@ -1,0 +1,32 @@
+from setuptools import setup, find_packages
+
+setup(
+      name='sentimentanalyser',
+      version='1.7',
+      description='',
+      url='',
+      author='',
+      author_email='',
+      keywords='',
+      license='',
+      packages=['sentimentanalyser'],
+      install_requires=[
+            "et-xmlfile",
+            "jdcal",
+            "nltk",
+            "numpy",
+            "openpyxl",
+            "pandas",
+            "psycopg2",
+            "python-dateutil",
+            "pytz",
+            "scikit-learn",
+            "scipy",
+            "six",
+            "whitenoise",
+      ],
+      test_suite='nose.collector',
+      tests_require=['nose'],
+      include_package_data=True,
+      zip_safe=False
+)
