@@ -1,0 +1,12 @@
+#! /usr/bin/env python
+# _*_ coding:utf-8 _*_
+
+def sum(*values):
+    s=0
+    for v in values:
+        i = int(v)
+        s= s + i
+    print s
+
+def output():
+    print 'http://www.keepstuding.club'
