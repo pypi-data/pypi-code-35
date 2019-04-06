@@ -1,0 +1,1 @@
+from automatic_test_tool.test_case import PageTestCase
