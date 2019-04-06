@@ -1,0 +1,359 @@
+import os
+from lzma import LZMADecompressor
+import bitstruct
+from .errors import Error
+from .compression.crle import CrleDecompressor
+from .compression.none import NoneDecompressor
+from .common import PATCH_TYPE_NORMAL
+from .common import PATCH_TYPE_IN_PLACE
+from .common import format_bad_compression_string
+from .common import format_bad_compression_number
+from .common import file_size
+from .common import unpack_size
+from .data_format import create_readers
+
+
+class PatchReader(object):
+
+    def __init__(self, fpatch, compression):
+        if compression == 'lzma':
+            self._decompressor = LZMADecompressor()
+        elif compression == 'crle':
+            self._decompressor = CrleDecompressor(patch_data_length(fpatch))
+        elif compression == 'none':
+            self._decompressor = NoneDecompressor(patch_data_length(fpatch))
+        else:
+            raise Error(format_bad_compression_string(compression))
+
+        self._fpatch = fpatch
+
+    def read(self, size):
+        return self.decompress(size)
+
+    def decompress(self, size):
+        """Decompress `size` bytes.
+
+        """
+
+        buf = b''
+
+        while len(buf) < size:
+            if self._decompressor.eof:
+                raise Error('Early end of patch data.')
+
+            if self._decompressor.needs_input:
+                data = self._fpatch.read(4096)
+
+                if not data:
+                    raise Error('Out of patch data.')
+            else:
+                data = b''
+
+            try:
+                buf += self._decompressor.decompress(data, size - len(buf))
+            except Exception:
+                raise Error('Patch decompression failed.')
+
+        return buf
+
+    @property
+    def eof(self):
+        return self._decompressor.eof
+
+
+def patch_data_length(fpatch):
+    return file_size(fpatch) - fpatch.tell()
+
+
+def unpack_header(data):
+    return bitstruct.unpack('p1u3u4', data)
+
+
+def convert_compression(compression):
+    if compression == 0:
+        compression = 'none'
+    elif compression == 1:
+        compression = 'lzma'
+    elif compression == 2:
+        compression = 'crle'
+    else:
+        raise Error(format_bad_compression_number(compression))
+
+    return compression
+
+
+def read_header_normal(fpatch):
+    """Read a normal header.
+
+    """
+
+    header = fpatch.read(1)
+
+    if len(header) != 1:
+        raise Error('Failed to read the patch header.')
+
+    patch_type, compression  = unpack_header(header)
+
+    if patch_type != PATCH_TYPE_NORMAL:
+        raise Error("Expected patch type 0, but got {}.".format(patch_type))
+
+    compression = convert_compression(compression)
+    to_size = unpack_size(fpatch)
+
+    return compression, to_size
+
+
+def read_header_in_place(fpatch):
+    """Read an in-place header.
+
+    """
+
+    header = fpatch.read(1)
+
+    if len(header) != 1:
+        raise Error('Failed to read the patch header.')
+
+    patch_type, compression = unpack_header(header)
+
+    if patch_type != PATCH_TYPE_IN_PLACE:
+        raise Error("Expected patch type 1, but got {}.".format(patch_type))
+
+    compression = convert_compression(compression)
+    memory_size = unpack_size(fpatch)
+    segment_size = unpack_size(fpatch)
+    shift_size = unpack_size(fpatch)
+    from_size = unpack_size(fpatch)
+    to_size = unpack_size(fpatch)
+
+    return compression, memory_size, segment_size, shift_size, from_size, to_size
+
+
+def shift_memory(fmem, memory_size, shift_size, from_size):
+    """Shift given memory.
+
+    """
+
+    size = file_size(fmem)
+
+    if size < memory_size:
+        raise Error(
+            'Expected memory size of at least {} bytes, but got {}.'.format(
+                memory_size,
+                size))
+
+    fmem.seek(0, os.SEEK_SET)
+    from_data = fmem.read(from_size)
+    fmem.seek(shift_size, os.SEEK_SET)
+    fmem.write(from_data[:memory_size - shift_size])
+
+
+def apply_patch_in_place_segment(fmem,
+                                 patch_reader,
+                                 to_offset,
+                                 to_size,
+                                 from_offset):
+    """Apply given in-place segment patch.
+
+    """
+
+    dfpatch_size = unpack_size(patch_reader)
+
+    if dfpatch_size > 0:
+        raise NotImplementedError()
+
+    to_pos = 0
+
+    while to_pos < to_size:
+        # Diff data.
+        size = unpack_size(patch_reader)
+
+        if to_pos + size > to_size:
+            raise Error("Patch diff data too long.")
+
+        offset = 0
+
+        while offset < size:
+            chunk_size = min(size - offset, 4096)
+            offset += chunk_size
+            patch_data = patch_reader.decompress(chunk_size)
+            fmem.seek(from_offset, os.SEEK_SET)
+            from_data = fmem.read(chunk_size)
+            from_offset += chunk_size
+            fmem.seek(to_offset + to_pos, os.SEEK_SET)
+            fmem.write(bytearray(
+                (pb + fb) & 0xff for pb, fb in zip(patch_data, from_data)
+            ))
+            to_pos += chunk_size
+
+        # Extra data.
+        size = unpack_size(patch_reader)
+
+        if to_pos + size > to_size:
+            raise Error("Patch extra data too long.")
+
+        fmem.seek(to_offset + to_pos, os.SEEK_SET)
+        fmem.write(patch_reader.decompress(size))
+        to_pos += size
+
+        # Adjustment.
+        from_offset += unpack_size(patch_reader)
+
+
+def apply_patch(ffrom, fpatch, fto):
+    """Apply given normal patch `fpatch` to `ffrom` to create
+    `fto`. Returns the size of the created to-data.
+
+    All arguments are file-like objects.
+
+    >>> ffrom = open('foo.mem', 'rb')
+    >>> fpatch = open('foo.patch', 'rb')
+    >>> fto = open('foo.new', 'wb')
+    >>> apply_patch(ffrom, fpatch, fto)
+    2780
+
+    """
+
+    compression, to_size = read_header_normal(fpatch)
+
+    if to_size == 0:
+        return to_size
+
+    patch_reader = PatchReader(fpatch, compression)
+    dfpatch_size = unpack_size(patch_reader)
+
+    if dfpatch_size > 0:
+        data_format = unpack_size(patch_reader)
+        patch = patch_reader.decompress(dfpatch_size)
+        dfdiff, ffrom = create_readers(data_format, ffrom, patch, to_size)
+
+        # with open('data-format-from-apply.bin', 'wb') as fout:
+        #     fout.write(file_read(ffrom))
+
+        ffrom.seek(0)
+
+    to_pos = 0
+
+    while to_pos < to_size:
+        # Diff data.
+        size = unpack_size(patch_reader)
+
+        if to_pos + size > to_size:
+            raise Error("Patch diff data too long.")
+
+        offset = 0
+
+        while offset < size:
+            chunk_size = min(size - offset, 4096)
+            offset += chunk_size
+            patch_data = patch_reader.decompress(chunk_size)
+            from_data = ffrom.read(chunk_size)
+
+            if dfpatch_size > 0:
+                dfdiff_data = dfdiff.read(chunk_size)
+                data = bytearray(
+                    (pb + fb + db) & 0xff for pb, fb, db in zip(patch_data,
+                                                                from_data,
+                                                                dfdiff_data)
+                )
+            else:
+                data = bytearray(
+                    (pb + fb) & 0xff for pb, fb in zip(patch_data, from_data)
+                )
+
+            fto.write(data)
+
+        to_pos += size
+
+        # Extra data.
+        size = unpack_size(patch_reader)
+
+        if to_pos + size > to_size:
+            raise Error("Patch extra data too long.")
+
+        data = patch_reader.decompress(size)
+
+        if dfpatch_size > 0:
+            dfdiff_data = dfdiff.read(size)
+            data = bytearray(
+                (dd + db) & 0xff for dd, db in zip(data, dfdiff_data)
+            )
+
+        fto.write(data)
+        to_pos += size
+
+        # Adjustment.
+        size = unpack_size(patch_reader)
+        ffrom.seek(size, os.SEEK_CUR)
+
+    if not patch_reader.eof:
+        raise Error('End of patch not found.')
+
+    return to_size
+
+
+def apply_patch_in_place(fmem, fpatch):
+    """Apply given in-place patch `fpatch` to `fmem`. Returns the size of
+    the created to-data.
+
+    Both arguments are file-like objects.
+
+    >>> fmem = open('foo.mem', 'r+b')
+    >>> fpatch = open('foo.patch', 'rb')
+    >>> apply_patch_in_place(fmem, fpatch)
+    2780
+
+    """
+
+    (compression,
+     memory_size,
+     segment_size,
+     shift_size,
+     from_size,
+     to_size) = read_header_in_place(fpatch)
+
+    if to_size > 0:
+        patch_reader = PatchReader(fpatch, compression)
+        shift_memory(fmem, memory_size, shift_size, from_size)
+
+        for i, to_pos in enumerate(range(0, to_size, segment_size)):
+            from_offset = max(segment_size * (i + 1), shift_size)
+            segment_to_size = min(segment_size, to_size - to_pos)
+            apply_patch_in_place_segment(fmem,
+                                         patch_reader,
+                                         to_pos,
+                                         segment_to_size,
+                                         from_offset)
+
+        if not patch_reader.eof:
+            raise Error('End of patch not found.')
+
+    return to_size
+
+
+def apply_patch_filenames(fromfile, patchfile, tofile):
+    """Same as :func:`~detools.apply_patch()`, but with filenames instead
+    of file-like objects.
+
+    >>> apply_patch_filenames('foo.old', 'foo.patch', 'foo.new')
+    2780
+
+    """
+
+    with open(fromfile, 'rb') as ffrom:
+        with open(patchfile, 'rb') as fpatch:
+            with open(tofile, 'wb') as fto:
+                return apply_patch(ffrom, fpatch, fto)
+
+
+def apply_patch_in_place_filenames(memfile, patchfile):
+    """Same as :func:`~detools.apply_patch_in_place()`, but with filenames
+    instead of file-like objects.
+
+    >>> apply_patch_in_place_filenames('foo.mem', 'foo-in-place.patch')
+    2780
+
+    """
+
+    with open(memfile, 'r+b') as fmem:
+        with open(patchfile, 'rb') as fpatch:
+            return apply_patch_in_place(fmem, fpatch)
