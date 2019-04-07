@@ -1,0 +1,430 @@
+import inspect
+import time
+import json
+import queue
+import re
+import os
+import math
+import types
+from threading import Thread, RLock
+
+
+from . import defaults
+from .sender import Sender
+from .worker import Worker
+from .error import (
+    SenderAlreadyStarted,
+    NotInDefaultType,
+    SettingError,
+    TaskUnstopError
+)
+
+
+class _Table:
+    def __init__(self, sender, taskid, table, method, ignore_stop=False, limit=-1):
+        self.sender = sender
+        self.taskid = taskid
+        self.table  = table
+        self.method = method
+        self.limit  = limit
+        self.ignore_stop = ignore_stop
+
+    def __iter__(self):
+        if not self.ignore_stop:
+            v = self.sender.get_stat(self.taskid)
+            if v is None:
+                print('no stat taskid:{}.'.format(self.taskid))
+                raise SettingError('cannot get stat.')
+            close = True
+            for key,value in v.items():
+                if key != 'all':
+                    if value.get('stop',0) == 0:
+                        close = False
+            if not close:
+                raise TaskUnstopError('unstop task.' )
+                # 目前对非停止的任务进行数据抽取的话是会直接抛出异常的。
+                # 因为目前开发是通过检查 redis 管道的长度来一次性抽取数据的，
+                # 如果忽略任务停止的部分直接抽取可能就只能抽一部分。
+                # 因为考虑到两种取数据的模式，pop模式会影响下标，所以默认未关闭暴力抛异常。
+        table = '{}:{}:{}'.format(defaults.VREDIS_DATA, self.taskid, self.table)
+        lens = self.sender.rds.llen(table)
+        if lens == 0:
+            print('no data. tablename: "{}".'.format(table))
+            return
+        lens = lens if self.limit == -1 else min(lens, self.limit)
+        if self.method == 'pop':
+            for _ in range(lens):
+                _, ret = self.sender.rds.brpop(table, defaults.VREDIS_DATA_TIMEOUT)
+                yield json.loads(ret)
+        elif self.method == 'range':
+            # 对于 range 方法取数据必须要切割去取，否则当 data 数据过多时取数据会卡住任务。
+            # 所以这里以 500 为一个缓冲区进行切割取数据。这个参数后续要不要暴露出去就看心情吧，
+            # 因为感觉配置参数太多了。
+            splitnum = 500
+            q = []
+            for i in range(int(lens/splitnum)):
+                v = [i*splitnum, i*splitnum+splitnum] if i==0 else [i*splitnum+1, i*splitnum+splitnum]
+                q.append(v)
+            if lens%splitnum != 0:
+                if q:
+                    q.append([q[-1][-1]+1, q[-1][-1]+lens%splitnum-1])
+                else:
+                    q.append([0,lens-1])
+            else:
+                q[-1][-1] = q[-1][-1] - 1
+            for start,end in q:
+                for ret in self.sender.rds.lrange(table,start,end):
+                    yield json.loads(ret)
+
+class _Table2:
+    def __init__(self, sender, taskid, table, checkstop=False, limit=-1):
+        self.sender = sender
+        self.taskid = taskid
+        self.table  = table
+        self.limit  = limit
+        self.checkstop = checkstop
+
+    def __iter__(self):
+        table = '{}:{}:{}'.format(defaults.VREDIS_DATA, self.taskid, self.table)
+        lens = self.sender.rds.llen(table)
+        def check_stop():
+            stop = []
+            dt = self.sender.get_stat(self.taskid)
+            if dt is not None:
+                dt.pop('all')
+                kt = sorted(dt,key=lambda i:int(i))
+                for idx,key in enumerate(kt):
+                    stop.append(bool(dt[key]['stop']))
+                stop = all(stop)
+            return stop
+
+        stop = False
+        n = 0
+        while lens or not stop:
+            print(lens)
+            for _ in range(lens):
+                _, ret = self.sender.rds.brpop(table, defaults.VREDIS_DATA_TIMEOUT)
+                yield json.loads(ret)['data']
+            time.sleep(.15)
+            lens = self.sender.rds.llen(table)
+            n = 0 if lens > 0 else n+1
+            stop = check_stop() if self.checkstop else n >= 15
+
+
+class Pipe:
+    def __init__(self,):
+        self.sender     = None
+        self.script     = ''
+        self.unstart    = True
+        self.settings   = self.get_config_from_homepath()
+        self.timestamp  = time.time()
+
+        self.DEBUG      = False
+        self.KEEPALIVE  = True
+        self.DUMPING    = False
+        self.QUICK_SEND = True
+        self.SPLIT_CNT  = 100 # 当单片任务全部由 sender 端发送时则需要显示当前发送任务量。
+        self.AUTO_IMPORT= True
+
+        self.taskqueue  = queue.Queue()
+        self.lock       = RLock()
+        self.tlock      = 0
+        self.send_cnt   = 0
+        self.tableiter  = {}
+        self.pplus      = {}
+
+    def get_config_from_homepath(self):
+        defaults_conf = dict(
+            host='localhost',
+            port=6379,
+            password=None,
+            db=0,
+        )
+        try:
+            home = os.environ.get('HOME')
+            home = home if home else os.environ.get('HOMEDRIVE') + os.environ.get('HOMEPATH')
+            config = os.path.join(home,'.vredis')
+            if not os.path.exists(config):
+                return {}
+            else:
+                with open(config,encoding='utf-8') as f:
+                    defaults_conf = json.load(f)
+        except:
+            print('unlocal homepath.')
+            defaults_conf = {}
+        return defaults_conf
+
+
+    def from_settings(self,**settings):
+        # 这里的配置可以有 redis 库里面 redis 类实例化所需要的各个参数
+        # 这里的配置也可以添加需要配置的 defaults 里面的各个参数，不过里面的一些参数可以动态修改，一些不能。
+        if not self.unstart: 
+            raise SenderAlreadyStarted('Sender must be set before the task is sent.')
+        self.settings.update(settings)
+        self.sender = Sender.from_settings(**self.settings)
+        return self
+
+    def connect(self, host='localhost', port=6379, password=None, db=0):
+        if not self.unstart: 
+            raise SenderAlreadyStarted('Sender must be set before the task is sent.')
+        d = dict(
+            host=host,
+            port=port,
+            password=password,
+            db=db,
+        )
+        self.settings.update(d)
+        self.sender = Sender.from_settings(**self.settings)
+        return self
+
+    # 对脚本魔改，让其在exec中能够找到其他函数，使其内部的原函数和其他函数执行变成将函数任务传入任务队列的函数
+    # 有点类似 scrapy yield Request, 但是更为直观和方便。
+    def script_boost(self, taskid, script, func):
+        # 经过测试，通过 inspect.getclosurevars(func).globals.items() 有缺陷
+        # 主要的缺陷问题就在于函数的内部函数的内部的参数无法获取，改用下面的方法就可以了。
+        # 下面是我自己的实现，通过下面的这个方法就能更好的查询到需要的自动引用
+        def parse_module(func):
+            p = []
+            coder = func.__code__
+            def _parse(coder):
+                for i in coder.co_names:
+                    p.append(i)
+                for i in coder.co_consts:
+                    if type(i) == types.CodeType:
+                        _parse(i)
+            _parse(coder)
+            for i in p:
+                t = func.__globals__.get(i)
+                if type(t) == types.ModuleType:
+                    yield i,t
+        allfuncs = dict(re.findall(r'(?:^|\n)def +(\S+) *\(.*?\) *:\n(\s+)',script))
+        if not allfuncs: return script
+        mkholder = re.sub(r'(^|\n)def +(?P<func>\S+) *\((?P<params>.*?)\) *:\n(?P<prespace>\s+)',
+                   r'\1def \g<func>(\g<params>):\n\g<prespace>$__func_\g<func>_placeholder__\n\g<prespace>',script)
+        _imports = []
+        # for name,mod in inspect.getclosurevars(func).globals.items(): # 带有缺陷，函数内部的函数内部参数无法查询到
+        for name,mod in parse_module(func):
+            if type(mod) == types.ModuleType:
+                if name == mod.__name__:
+                    _imports.append('import {}'.format(name))
+                else:
+                    _imports.append('import {} as {}'.format(mod.__name__, name))
+        afunc = list(map(lambda i:'{} = pipefunc({},"{}",{})'.format(i,taskid,i,self.pplus[i]),allfuncs))
+        afunc = afunc + _imports if self.AUTO_IMPORT else afunc
+        for funcname in allfuncs:
+            mkholder = mkholder.replace('$__func_{}_placeholder__'.format(funcname), 
+                                        '\n'.join(map(lambda i:'{}{}'.format(allfuncs[funcname],i),afunc)).strip())
+        return mkholder
+
+
+    def __call__(self, func, **_plus):
+        if self.DUMPING == True and self.KEEPALIVE == False:
+            raise SettingError('DUMPING==True mode must work in KEEPALIVE==True mode.')
+
+        src = inspect.getsource(func)
+        src = '\n'.join(filter(lambda i:not i.strip().startswith('@'), src.splitlines()))+'\n'
+        plus = {'table':func.__name__}
+        plus.update(_plus)
+        self.pplus[func.__name__] = plus.copy()
+        self.script += src
+        def _wrapper(*args, **kwargs):
+            with self.lock:
+                if self.unstart:
+                    self.sender = self.sender if self.sender is not None else Sender.from_settings(**self.settings)
+                    self.tid    = self.sender.get_taskid()
+                    self.sender.rds.hset(defaults.VREDIS_WORKER, '{}@stamp'.format(self.tid), int(time.time()))
+                    self.script = self.script_boost(self.tid, self.script, func)
+                    if self.QUICK_SEND:
+                        # 多线程池任务发送
+                        self.quicker_send_task()
+                        self.task_sender = self.quick_send
+                    else:
+                        # 单线程发送任务即可
+                        self.task_sender = self.normal_send
+                    if not self.KEEPALIVE:
+                        # 发送模式先获取任务id号码，先传输任务
+                        print('receiving taskid: {}'.format(self.tid))
+                        self.send_work_delay()
+                    else:
+                        # 实时模式则先发送任务，直接实时传输任务即可。
+                        self.send_work()
+                    self.unstart = False
+                if func.__name__ not in self.tableiter:
+                    self.tableiter[func.__name__] = _Table2(self.sender, self.tid, plus.get('table'), limit=-1)
+            self.task_sender(self.tid, func.__name__, args, kwargs, plus, self.KEEPALIVE)
+        _wrapper.datas = lambda: self.tableiter[func.__name__]
+        return _wrapper
+
+
+    # 线程池，主要用于快速提交任务使用
+    def quicker_send_task(self):
+        def print_task_info(host,port,taskid):
+            while True:
+                time.sleep(5)
+                info    = '[ REDIS ]'+'{:>36}'.format('host: {}, port: {}'.format(host,port))
+                print('log info by each 10 sec.')
+                print(info)
+                print('='*45)
+                dt = self.sender.get_stat(taskid)
+                stop = []
+                if dt is None:
+                    print('no stat taskid:{}.'.format(taskid))
+                else:
+                    # format print
+                    a = dt.pop('all')
+                    kt = sorted(dt,key=lambda i:int(i))
+                    fmt = '{:>9}'*5
+                    print(fmt.format('workerid','collect','execute','fail','stop'))
+                    print(fmt.format(*['------']*5))
+                    for idx,key in enumerate(kt):
+                        value = dt[key]
+                        stop.append(bool(value['stop']))
+                        fm = fmt.format(key,
+                            value['collection'],
+                            value['execute'],
+                            value['fail'],
+                            str(bool(value['stop'])))
+                        print(fm)
+                        if idx == len(dt) - 1:
+                            print(fmt.format(*['------']*5))
+                            print(fmt.format('taskid','collect','execute','fail','undistr'))
+                            key,value = taskid,a
+                            fm = fmt.format(key,
+                                value['collection'],
+                                value['execute'],
+                                value['fail'],
+                                value['tasknum'])
+                            print(fm)
+                timestamp   = self.sender.rds.hget(defaults.VREDIS_WORKER, '{}@stamp'.format(taskid))
+                stampinfo   = '{:>' + str(len(info)) +'}'
+                stampcut    = str(time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(int(timestamp)))) if timestamp else str(None)
+                stampinfo   = stampinfo.format('start:{}'.format(stampcut))
+                print('='*45)
+                print(stampinfo)
+                if all(stop):
+                    print('task is stop.')
+                    break
+                print()
+                time.sleep(5)
+        def _sender():
+            with self.lock: self.tlock += 1
+            while True:
+                try:
+                    taskid, function_name, args, kwargs, plus, keepalive = self.taskqueue.get(timeout=2)
+                    self.sender.send_execute(taskid, function_name, args, kwargs, plus, keepalive)
+                    with self.lock: 
+                        self.send_cnt += 1
+                        if not self.KEEPALIVE: 
+                            self.timestamp = time.time()
+                        else:
+                            if not self.sender.start_worker:
+                                return
+                    if not self.KEEPALIVE and self.send_cnt % self.SPLIT_CNT == 0 and self.send_cnt != 0:
+                        _t = int(self.send_cnt//self.SPLIT_CNT)
+                        if _t == 2**int(math.log(_t,2)):
+                            print('{} tasks have been sent.'.format(self.send_cnt))
+                except:
+                    if time.time() - self.timestamp > 2:
+                        with self.lock: self.tlock -= 1
+                        if self.tlock == 0 and not self.KEEPALIVE:
+                            print('all: {} tasks have been sent.'.format(self.send_cnt))
+                            print('you can close the program at any time. (ctrl+pause[win] or alt+pause[linux])')
+                            print()
+                            host = self.settings.get('host','localhost')
+                            port = self.settings.get('port',6379)
+                            print_task_info(host, port, self.tid)
+                        break
+                    time.sleep(.15)
+        for _ in range(defaults.VREDIS_SENDER_THREAD_SEND):
+            Thread(target=_sender).start()
+
+    # 快速提交任务，如果你不是实时任务模式的话，就没有必要慢慢的跑任务 DEBUG
+    def quick_send(self, taskid, function_name, args, kwargs, plus, keepalive):
+        self.taskqueue.put((taskid, function_name, args, kwargs, plus, keepalive))
+
+    def normal_send(self, taskid, function_name, args, kwargs, plus, keepalive):
+        self.sender.send_execute(taskid, function_name, args, kwargs, plus, keepalive)
+
+    # 开启任务
+    def send_work(self):
+        self.sender.send(input_order = {
+                        'command':'script',
+                        'settings':{
+                            'VREDIS_SCRIPT':        self.script,
+                            'DEBUG':                self.DEBUG,
+                            'VREDIS_DUMP_REALTIME_ITEM': self.DUMPING,
+                            'VREDIS_KEEPALIVE':     self.KEEPALIVE}
+                        },
+                    keepalive=self.KEEPALIVE,
+                    dumping=self.DUMPING)
+
+    # 延迟开启任务
+    def send_work_delay(self):
+        # 如果无需保持连接的话，等任务发送完再执行会更好一些，防止任务队列可能为空的情况。
+        def _logtoggle():
+            while time.time() - self.timestamp < 1.5: # 当任务发送结束（间隙不超过）n秒后就开始执行任务。
+                time.sleep(.15)
+            self.send_work()
+        Thread(target=_logtoggle).start()
+
+    def set(self, **plus):
+        # 这里的 plus 主要是由 worker 端的需求进行的需求处理，这里暂时就不多设定了
+        # 不过为了约束执行初期的异常，这里暂时需要一个临时的验证。
+        # 后期拓展接口的开发，不过现在来说，直接使用 table 函数是个更加简便的方式。
+        # 目前只有配置存储空间的函数。
+        _types = ['table']
+        for i in plus:
+            if i not in _types:
+                raise NotInDefaultType('pipe.set kwargs:{}:{} must in {}'.format(plus,i,_types))
+        return lambda func: self.__call__(func, **plus)
+
+    def table(self, table):
+        # 简约版的配置方法，后期为了对某些功能连锁，可能会改。
+        return lambda func: self.__call__(func, **{'table':table})
+
+    def from_table(self, taskid, table=defaults.VREDIS_DATA_DEFAULT_TABLE, method='range', limit=-1):
+        # 预计的开发在这里需要返回一个类，这个类绑定了简单的数据取出的方法。重载迭代的方法。
+        # limit 参数只能在 method=range 情况下才能使用。
+        assert method in ['pop', 'range']
+        if self.sender is None:
+            host = self.settings.get('host','localhost')
+            port = self.settings.get('port',6379)
+            print('[ INFO ]: use defaults host:{}, port:{}.'.format(host,port))
+        self.sender = self.sender if self.sender is not None else Sender.from_settings(**self.settings)
+        return _Table(self.sender, taskid, table, method, limit=limit)
+
+
+    def get_stat(self, taskid):
+        if self.sender is None:
+            host = self.settings.get('host','localhost')
+            port = self.settings.get('port',6379)
+            print('[ INFO ]: use defaults host:{}, port:{}.'.format(host,port))
+        self.sender = self.sender if self.sender is not None else Sender.from_settings(**self.settings)
+        v = self.sender.get_stat(taskid)
+        if v is None:
+            print('no stat taskid:{}.'.format(taskid))
+        else:
+            for i in v.items():
+                print(i)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+pipe = Pipe()
+
+__author__ = 'cilame'
+__version__ = '1.2.5'
+__email__ = 'opaquism@hotmail.com'
+__github__ = 'https://github.com/cilame/vredis'
