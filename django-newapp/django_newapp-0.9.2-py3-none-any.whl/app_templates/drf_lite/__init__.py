@@ -1,0 +1,1 @@
+__desc__ = "Ini untuk yang kecil"
