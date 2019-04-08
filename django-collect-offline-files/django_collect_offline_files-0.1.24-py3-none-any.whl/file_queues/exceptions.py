@@ -1,0 +1,2 @@
+class TransactionsFileQueueError(Exception):
+    pass
