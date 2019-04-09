@@ -1,0 +1,3 @@
+import sorting.abstract_quick_sorter
+
+from .abstract_quick_sorter import TGAbstractQuickSorter
