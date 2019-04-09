@@ -1,0 +1,1 @@
+import thraxisgamespatterns.application.base_context_registry_locator
